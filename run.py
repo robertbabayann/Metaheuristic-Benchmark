@@ -25,7 +25,7 @@ class RunSettings:
     tuning_seed: int
     tuning_n_trials: int
     tuning_proxy_fraction: float
-    random_baseline_samples: int
+    random_search_repeats: int
     random_baseline_seed: int
 
 
@@ -35,7 +35,7 @@ DEFAULT_SETTINGS = RunSettings(
     tuning_seed=config.TUNING_SEED,
     tuning_n_trials=config.TUNING_N_TRIALS,
     tuning_proxy_fraction=config.TUNING_PROXY_FRACTION,
-    random_baseline_samples=config.RANDOM_BASELINE_SAMPLES,
+    random_search_repeats=config.RANDOM_SEARCH_REPEATS,
     random_baseline_seed=config.RANDOM_BASELINE_SEED,
 )
 
@@ -179,7 +179,7 @@ def run_experiments():
         f"final_seeds={list(settings.final_seeds)} "
         f"tuning_n_trials={settings.tuning_n_trials} "
         f"tuning_proxy_fraction={settings.tuning_proxy_fraction} "
-        f"random_baseline_samples={settings.random_baseline_samples}"
+        f"random_search_repeats={settings.random_search_repeats}"
     )
     if input("\nRun? [Y/N]: ").strip().lower() not in TRUE_WORDS:
         return
@@ -195,11 +195,13 @@ def run_experiments():
 
             targets_cache_path = os.path.join(config.CACHE_DIR, "targets", track, f"{dataset}.json")
             if not os.path.exists(targets_cache_path):
-                ProgressTracker.phase(settings.random_baseline_samples, f"[reference] {task_label}")
+                reference_total = settings.search_budget * settings.random_search_repeats
+                ProgressTracker.phase(reference_total, f"[reference] {task_label}")
             targets = get_task_targets(
                 benchmark,
                 targets_cache_path,
-                settings.random_baseline_samples,
+                settings.search_budget,
+                settings.random_search_repeats,
                 settings.random_baseline_seed,
                 config.TARGET_LEVELS,
             )

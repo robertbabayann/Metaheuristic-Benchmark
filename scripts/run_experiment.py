@@ -46,7 +46,8 @@ def main():
     targets = get_task_targets(
         benchmark,
         targets_cache_path,
-        config.RANDOM_BASELINE_SAMPLES,
+        config.SEARCH_BUDGET,
+        config.RANDOM_SEARCH_REPEATS,
         config.RANDOM_BASELINE_SEED,
         config.TARGET_LEVELS,
     )

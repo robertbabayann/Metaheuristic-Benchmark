@@ -36,12 +36,12 @@ def _run_single_seed(class_name, params, pop_size, benchmark, epoch, seed, desc_
     return list(optimizer.history.list_global_best_fit), float(optimizer.g_best.target.fitness)
 
 
-def get_task_targets(benchmark, cache_path, random_baseline_samples, random_baseline_seed, target_levels):
+def get_task_targets(benchmark, cache_path, random_search_budget, random_search_repeats, random_baseline_seed, target_levels):
     if cache_path and os.path.exists(cache_path):
         with open(cache_path, "r") as f:
             return json.load(f)
 
-    median = random_baseline_median(benchmark, random_baseline_samples, random_baseline_seed)
+    median = random_baseline_median(benchmark, random_search_budget, random_search_repeats, random_baseline_seed)
     targets = compute_targets(benchmark, median, target_levels)
 
     if cache_path:

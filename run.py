@@ -316,11 +316,16 @@ def analysis_menu():
     run_id = _pick_run()
     if run_id is None:
         return
-    from ranking import build_ranking_table, format_ranking_table
+    from metrics import load_cost_table
+    from ranking import build_ranking_table, format_ranking_table, format_significance_report
 
     rows = build_ranking_table(storage.run_dir(run_id))
     print()
     print(format_ranking_table(rows))
+
+    cost_table = load_cost_table(storage.run_dir(run_id), ["target_2"])
+    print()
+    print(format_significance_report(cost_table, metric_key="target_2"))
 
 
 def plots_menu():

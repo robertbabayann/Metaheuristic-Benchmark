@@ -172,7 +172,7 @@ ALGORITHM_POOL = {
         },
     },
     "CMA-ES": {
-        "class_name": "CMA_ES",
+        "class_name": "Simple_CMA_ES",
         "tuning_space": {
             "pop_size": ("int", 5, 100),
         },

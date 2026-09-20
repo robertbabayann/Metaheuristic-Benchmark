@@ -3,8 +3,6 @@ __pycache__/
 .venv/
 venv/
 env/
-cache/
-results/
 data/
 .idea/
 .vscode/

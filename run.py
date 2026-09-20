@@ -1,18 +1,10 @@
 import dataclasses
 import json
 import os
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
 
 import config
-from experiment.progress import ProgressTracker, track_progress
-from experiment.runner import get_task_targets, run_algorithm_on_task
-from optimizers.pool import ALGORITHM_POOL
-from run_experiment import build_benchmark
+from experiment import ProgressTracker, build_benchmark, get_task_targets, run_algorithm_on_task, track_progress
+from optimizers import ALGORITHM_POOL
 
 TRUE_WORDS = {"y", "yes", "true", "1"}
 FALSE_WORDS = {"n", "no", "false", "0"}
@@ -48,11 +40,6 @@ def parse_value(current, raw):
         if lowered in FALSE_WORDS:
             return False
         raise ValueError(raw)
-    if current is None:
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return raw
     if isinstance(current, tuple):
         parts = [part.strip() for part in raw.split(",") if part.strip()]
         parsed = []
@@ -62,11 +49,6 @@ def parse_value(current, raw):
             except ValueError:
                 parsed.append(part)
         return tuple(parsed)
-    if isinstance(current, dict):
-        value = json.loads(raw)
-        if not isinstance(value, dict):
-            raise ValueError(raw)
-        return value
     if isinstance(current, int) and not isinstance(current, bool):
         return int(raw)
     if isinstance(current, float):
@@ -144,6 +126,35 @@ def choose_one(title, options, prompt="Select"):
     return options[int(raw) - 1]
 
 
+def _mean_and_hits(values):
+    finite = [v for v in values if v != float("inf")]
+    mean = float(sum(finite) / len(finite)) if finite else float("inf")
+    return mean, len(finite), len(values)
+
+
+def _fmt(value):
+    return "inf" if value == float("inf") else f"{value:.3g}"
+
+
+def summarize(run_index, total_runs, task_label, result, output_path):
+    params = result["params"]
+    fits = [r["final_fitness"] for r in result["records"]]
+    target_2 = [r.get("target_2") for r in result["records"]]
+    total_q = [r["total_queries"] for r in result["records"]]
+    fit_mean, fit_hits, n_seeds = _mean_and_hits(fits)
+    t2_mean, t2_hits, _ = _mean_and_hits(target_2)
+    return " | ".join(
+        [
+            f"[{run_index}/{total_runs}] {task_label} {result['algorithm']} {result['mode']}",
+            f"pop={params['pop_size']}",
+            f"q={sum(total_q)}",
+            f"fit={_fmt(fit_mean)}({fit_hits}/{n_seeds})",
+            f"t2={_fmt(t2_mean)} hit={t2_hits}/{n_seeds}",
+            os.path.relpath(output_path, config.RESULTS_DIR),
+        ]
+    )
+
+
 def run_experiments():
     track = choose_one("Track:", ["hpo", "nas"])
     if track is None:
@@ -210,14 +221,14 @@ def run_experiments():
             os.makedirs(output_dir, exist_ok=True)
 
             for algorithm_name in algorithms:
-                for mode in modes:
+                for run_mode in modes:
                     run_index += 1
                     result = run_algorithm_on_task(
                         algorithm_name,
                         ALGORITHM_POOL[algorithm_name],
                         benchmark,
                         targets,
-                        mode,
+                        run_mode,
                         settings.search_budget,
                         settings.final_seeds,
                         settings.tuning_seed,
@@ -229,54 +240,22 @@ def run_experiments():
                         progress=True,
                     )
                     ProgressTracker.close()
-                    output_path = os.path.join(output_dir, f"{algorithm_name}_{mode}.json")
+                    output_path = os.path.join(output_dir, f"{algorithm_name}_{run_mode}.json")
                     with open(output_path, "w") as f:
                         json.dump({"targets": targets, **result}, f, indent=2)
                     ProgressTracker.write(summarize(run_index, total_runs, task_label, result, output_path))
     except KeyboardInterrupt:
         ProgressTracker.close()
         print("\ninterrupted")
-    except Exception as e:
-        ProgressTracker.close()
-        print(f"\nfailed: {e}")
-
-
-def _mean(values):
-    finite = [v for v in values if v != float("inf")]
-    return float(sum(finite) / len(finite)) if finite else float("inf")
-
-
-def _fmt(value):
-    return "inf" if value == float("inf") else f"{value:.3g}"
-
-
-def summarize(run_index, total_runs, task_label, result, output_path):
-    params = result["params"]
-    record = result["records"][0]
-    fits = [r["final_fitness"] for r in result["records"]]
-    target_2 = [r.get("target_2") for r in result["records"]]
-    return " | ".join(
-        [
-            f"[{run_index}/{total_runs}] {task_label} {result['algorithm']} {result['mode']}",
-            f"pop={params['pop_size']}",
-            f"ep={record['epoch']}",
-            f"q={record['search_queries']}+{record['tuning_queries']}={record['total_queries']}",
-            f"fit={_fmt(_mean(fits))}",
-            f"t2={_fmt(_mean(target_2))}",
-            os.path.relpath(output_path, config.RESULTS_DIR),
-        ]
-    )
 
 
 def analyze_results():
     try:
-        from build_performance_profile import main
+        from scripts.build_performance_profile import main
 
         main()
     except KeyboardInterrupt:
         print("\ninterrupted")
-    except Exception as e:
-        print(f"\nfailed: {e}")
 
 
 def show_menu():

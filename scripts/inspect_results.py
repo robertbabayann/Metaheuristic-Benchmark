@@ -56,7 +56,9 @@ def main():
         )
 
     if args.out:
-        os.makedirs(os.path.dirname(args.out), exist_ok=True) if os.path.dirname(args.out) else None
+        out_dir = os.path.dirname(args.out)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
         with open(args.out, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
             writer.writeheader()

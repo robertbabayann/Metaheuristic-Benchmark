@@ -1,62 +1,188 @@
-# meta-benchmark
+# Metaheuristic Benchmark on Real ML Tasks
 
-Первая версия репозитория метаэвристического бенчмарка (HPO + NAS). Соответствует ТЗ проекта.
+A benchmark comparing 22 metaheuristic optimizers (bio-inspired, swarm, physics-based and
+classical) on two real machine-learning tasks, instead of synthetic test functions:
 
-## Структура
+- **HPO** — hyperparameter optimization of a small fully-connected network, via the
+  [FCNet tabular benchmark](https://arxiv.org/abs/1905.04970) (Klein & Hutter), on
+  `protein_structure`, `slice_localization`, `naval_propulsion`, `parkinsons_telemonitoring`.
+- **NAS** — neural architecture search on the topology search space of
+  [NATS-Bench](https://github.com/D-X-Y/NATS-Bench), on `cifar10-valid`, `cifar100`,
+  `ImageNet16-120`.
+
+Both tasks are fully tabulated: every candidate's fitness is a lookup into a precomputed table
+of real training results, not a live model training run and not a synthetic function. This makes
+it feasible to run 22 optimizers, in `default` and `tuned` modes, with 5 seeds each, at a shared
+query budget, and to know the true global optimum of the search space exactly.
+
+## Methodology
+
+- **Search space encoding.** Every optimizer works over a continuous vector in `[0, 1]^d`
+  (mealpy's `FloatVar`), regardless of the underlying space's actual type. The HPO track decodes
+  each coordinate to the nearest point on the benchmark's hyperparameter grid; the NAS track
+  encodes each of the 6 cell edges as a one-hot block and decodes it via `argmax`. The same
+  encoding is used for every algorithm, including the (real-coded) genetic algorithm, so no
+  method gets a hand-tuned representation advantage.
+- **Query budget.** `SEARCH_BUDGET` real benchmark lookups, identical for every algorithm on a
+  given task. This is enforced *exactly*, not estimated — see "Exact query-budget accounting"
+  below.
+- **Targets.** `optimum` is the true global optimum (exhaustive search over the — fully or near-
+  fully enumerable — space). `random_median` is the median best-of-run over several independent
+  random-search runs, each with the *same* query budget as the algorithms being compared (a
+  median over single random points would systematically flatter every algorithm and make the
+  comparison uninformative). `target_1/2/3` sit at 50% / 75% / 90% of the way from
+  `random_median` to `optimum`.
+- **Default vs. tuned.** Each algorithm is run both with library-default internal parameters and
+  with parameters found by TPE (Optuna) on a shorter proxy budget, per dataset. This answers "is
+  tuning worth it for this method" separately from "which method wins outright."
+- **Performance profiles.** Dolan–Moré profiles over `Queries_to_TargetX`, computed **per
+  (dataset, seed)** rather than averaged across seeds first — see "Performance profiles no longer
+  hide partial failures" below.
+
+## Repository layout
 
 ```
-config.py                  — все настраиваемые параметры проекта в одном месте
-benchmarks/                — обёртки над HPOBench(FCNet) и NATS-Bench
-encoding/                  — decode-слой: round-to-grid (HPO) и one-hot+argmax (NAS)
-optimizers/                — реестр mealpy-алгоритмов и пул с пространствами тюнинга
-tuning/                    — TPE-тюнинг внутренних параметров алгоритма (Optuna)
-metrics/                   — таргеты, Queries_to_Target, Performance Profiles (Dolan–Moré)
-experiment/                — оркестрация одного прогона (алгоритм, датасет, режим)
-scripts/run_experiment.py  — CLI: прогнать весь пул на одном датасете
-scripts/build_performance_profile.py — сборка profile по всем сохранённым результатам
+config.py         constants: budgets, datasets, seeds, target levels
+benchmarks.py      Benchmark base class, [0,1]^d decode helpers, FCNetBenchmark, NATSBenchmark
+optimizers.py      the 22-algorithm pool, mealpy registry glue, the VCS bug patch
+metrics.py         QueryBudget/BudgetExceeded, target calibration, queries-to-target,
+                    Dolan-Moré performance profiles
+tuning.py          TPE tuning of internal parameters (Optuna), budget-accurate
+experiment.py      progress bar, benchmark construction, target caching, the experiment runner
+run.py             interactive CLI
+scripts/
+  run_experiment.py            non-interactive: run the whole pool on one (track, dataset)
+  build_performance_profile.py text summary of performance profiles
+  plot_performance_profile.py  linear + log2 performance-profile plots
+  inspect_results.py           raw per-(algorithm, dataset, mode) diagnostic dump
+  check_fcnet_wrapper.py       one-off sanity check against the raw FCNet data (see below)
+tests/
+  test_core.py       decode helpers, pop_size sanitisation, exact-budget accounting (incl. the
+                      previously-broken multi-phase algorithms), metrics
+data/                benchmark data files (downloaded manually, see below — not in git)
+cache/               global optima and targets, computed once and cached
+results/             one JSON per (algorithm, dataset, mode)
 ```
 
-## Установка
+Six modules instead of the previous seven sub-packages/eighteen files: each module groups
+everything about one concern (all benchmark code together, all metrics together, etc.) rather
+than one file per function.
 
-```
-pip install .
-```
+## Installation
 
-## Обязательный ручной шаг — данные бенчмарков
-
-Код в `benchmarks/` полностью рабочий, но сами табличные данные я скачать не могу: в этой среде разработки сеть разрешена только на github.com/pypi.org и смежные — данные NATS-Bench и FCNet лежат на Google Drive / ml4aad.org, туда доступа нет. Нужно вручную:
-
-1. **NATS-Bench (tss)**: скачать `NATS-tss-v1_0-3ffb9-simple` с Google Drive по инструкции в `github.com/D-X-Y/NATS-Bench`, положить путь в `config.NATS_TSS_FILE`.
-2. **FCNet (Klein & Hutter)**: скачать `fcnet_tabular_benchmarks.tar.gz` по инструкции в `github.com/automl/nas_benchmarks`, распаковать в `config.FCNET_DATA_DIR`, и установить сам пакет `tabular_benchmarks` из этого репозитория (`pip install .` внутри него — на PyPI его нет).
-
-Без этих двух шагов `benchmarks/hpo_fcnet.py` и `benchmarks/nas_nats.py` не запустятся — это не заглушка, это честная внешняя зависимость от чужих данных.
-
-## Запуск
-
-```
-python scripts/run_experiment.py --track nas --dataset cifar10-valid --mode both
-python scripts/run_experiment.py --track hpo --dataset protein_structure --mode both
-python scripts/build_performance_profile.py --metric target_2
+```bash
+git clone <this repo>
+cd <this repo>
+pip install -e .
 ```
 
-Первый вызов `global_optimum()` для датасета — самый долгий шаг (полный перебор: 15625 архитектур для NAS, ~62208 конфигураций для HPO), но результат кэшируется на диск в `cache/` и больше не пересчитывается.
+This also pulls in `tabular_benchmarks` (the FCNet reader) directly from its GitHub source
+(`automl/nas_benchmarks`) as an ordinary pip dependency — no manual cloning or separate install
+step. Note: importing `tabular_benchmarks` normally would fail, because its `__init__.py`
+unconditionally imports a NAS-Bench-101 module that depends on the (non-pip, TensorFlow-based)
+`nasbench` package, which this project doesn't need. `benchmarks.py` loads
+`tabular_benchmarks/fcnet_benchmark.py` directly by file path (`importlib`), bypassing that
+`__init__.py` entirely, so nothing extra needs to be installed.
 
-## Что реализовано полностью
+## Data setup
 
-- Единый пайплайн: benchmark → encode/decode → mealpy-оптимизатор → Queries_to_Target → Performance Profile.
-- Таргеты через точный известный оптимум (без калибровки через референсный алгоритм).
-- Фиксированный бюджет поиска (`SEARCH_BUDGET`) вместо фиксированных эпох: `epoch = budget // pop_size`, а `pop_size` — тюнируемый гиперпараметр наравне с внутренними параметрами алгоритма.
-- TPE-тюнинг параметров алгоритма отдельно на каждый датасет (Default vs Tuned), бюджет тюнинга учитывается в Total_Queries. В Default-режиме берётся индивидуальный дефолтный `pop_size` каждого алгоритма из mealpy.
-- Дисковое кэширование дорогих вычислений (глобальный оптимум, таргеты).
+The code does not — and cannot — bundle the benchmark data (several GB). Download it once:
 
-## Что нужно решить до основного прогона (честно, не скрыто в коде)
+**FCNet (HPO track):**
+```bash
+mkdir -p data/fcnet_tabular_benchmarks
+wget http://ml4aad.org/wp-content/uploads/2019/01/fcnet_tabular_benchmarks.tar.gz
+tar xf fcnet_tabular_benchmarks.tar.gz -C data/fcnet_tabular_benchmarks --strip-components=1
+```
 
-1. **Пул алгоритмов в `optimizers/pool.py` — стартовый, не финальный.** Сейчас включены 22 алгоритма из mealpy: SA, GA, PSO, DE, IWO, TLO, BSO, WDO, GWO, WOA, HHO, AEO, SSA, GBO, AOA, VCS, GCO, HGS, CDO, ESO, CMA-ES, ES. У всех есть тюнируемые параметры (включая `pop_size`), так что режим Tuned определён для каждого. Добавление нового метода — это одна запись в словаре `ALGORITHM_POOL`, инфраструктура на это не завязана жёстко.
+**NATS-Bench (NAS track):** the topology-search-space archive (`NATS-tss-v1_0-3ffb9-simple.tar`)
+is distributed via Google Drive; follow the "Preparation and Download" section of the
+[NATS-Bench README](https://github.com/D-X-Y/NATS-Bench#preparation-and-download) and extract it
+to `data/NATS-tss-v1_0-3ffb9-simple` (or point `config.NATS_TSS_FILE` at wherever you put it).
 
-2. **Важная methodological поправка к тому, что обсуждалось раньше.** Я говорил, что GA-семейство должно нативно, без decode-слоя, работать на категориальном NAS-пространстве — это верно для классического строкового GA, но **не для GA из mealpy**: библиотека реализует GA как real-coded (непрерывный вектор с вещественным кроссовером/мутацией), то есть через тот же одинаковый one-hot+argmax слой, что и все остальные. Если для вас принципиально важно проверить именно гипотезу "нативный дискретный GA vs continuous+encoding", нужен отдельный, не-mealpy, строковый GA-модуль — сейчас в пуле его нет. Если это не принципиально — текущая реализация одинаково честна для всех алгоритмов (никто не получает привилегии), но тогда стоит скорректировать формулировку ожидаемого результата в статье.
+After downloading, it's worth running the sanity check once:
+```bash
+python scripts/check_fcnet_wrapper.py protein_structure
+```
+It prints, for a few random configurations, the four raw stored training repeats next to this
+project's averaged value, and asserts they're consistent. This wrapper was written and reasoned
+about against the upstream library's source, but not run end-to-end against the real data before
+your first run — worth the one-time check.
 
-3. **Особенности mealpy, обойдённые в коде.** `OriginalSA` — single-based, `pop_size` не влияет на поиск, поэтому он не тюнится, а бюджет полностью уходит в итерации (1 оценка/шаг). `BaseGA` падает при нечётном `pop_size` и нестабилен при малом — диапазон тюнинга начинается с 20 и приводится к чётному. `OriginalBSO` падает, если `pop_size` не делится на `m_clusters` — значение приводится к кратному. `OriginalIWO` требует `pop_size >= 20` (ограничение на `seed_max`). `WDO` и `AOA` требуют `pop_size >= 10`.
+## Usage
 
-4. **`decode()` для one-hot NAS-кодирования** — я использую прямой argmax без температуры/шума, это самый простой вариант из литературы. Более мягкие схемы (softmax-sampling вместо hard argmax) — возможное расширение, не реализовывал, чтобы не усложнять первую версию сверх ТЗ.
+Interactive:
+```bash
+python run.py
+```
 
-Всё остальное в коде — не заглушки: пайплайн проверен end-to-end на синтетической функции (registry → tuning → runner → метрики → performance profile), логика воспроизводима и работает.
+Non-interactive, one track/dataset, full pool:
+```bash
+python scripts/run_experiment.py --track hpo --dataset protein_structure
+python scripts/run_experiment.py --track nas --dataset cifar100 --modes tuned --algorithms GA PSO VCS
+```
+
+Analysis, once you have results:
+```bash
+python scripts/build_performance_profile.py          # text table
+python scripts/plot_performance_profile.py            # profile_linear.png / profile_log2.png
+python scripts/inspect_results.py --metric target_2 --out diagnostics.csv
+```
+
+Tests:
+```bash
+pip install -e ".[dev]"
+pytest tests/
+```
+
+## What changed vs. the previous version, and why
+
+This is a rewrite that fixes several issues found during a code review, on top of the file
+consolidation described above.
+
+1. **Exact query-budget accounting (`metrics.QueryBudget`).** The previous implementation derived
+   the number of real benchmark queries per epoch as `pop_size`, and computed the number of
+   epochs as `budget // pop_size`. This is wrong for any algorithm whose `evolve()` step evaluates
+   more than one full population per epoch — confirmed, by reading mealpy's source, for **VCS**
+   (3 full-population phases per epoch), **AEO** (2 phases), **SSA** (~1.5–2×, depending on the
+   tuned `SD` parameter), and **HHO** (a stochastic per-individual extra evaluation in its
+   levy-flight branch). Those algorithms were silently consuming 1.5–3× more real benchmark
+   queries than the shared budget was supposed to allow, while being logged and scored as if they
+   hadn't — a direct violation of the "same query budget for everyone" fairness principle, and it
+   inflated their apparent `Queries_to_TargetX` performance.
+
+   The fix wraps every benchmark call in a real counter (`QueryBudget`) that raises once the
+   budget is spent, regardless of *why* the underlying optimizer wanted another query. Optimizers
+   are given a generous epoch cap (`epoch = budget`) and the counter — not the epoch count — is
+   what actually stops the run. This is exact for every algorithm's internal structure, present
+   and future, without needing a per-algorithm cost model. `queries_to_target` is now read
+   directly off the per-query best-so-far trace the counter records, so it no longer depends on a
+   `queries_per_epoch` estimate either. Verified in `tests/test_core.py` against real mealpy
+   optimizers (including VCS, AEO, SSA, HHO): every one of them now consumes exactly `budget`
+   queries, not more.
+
+2. **Deterministic fitness.** Both underlying tables have a "randomly pick one repeat" default
+   that is not controlled by this project's own seed policy: FCNet's `objective_function` draws
+   `rng.randint(4)` from an unseeded RNG on every call, and NATS-Bench's `get_more_info` defaults
+   to `is_random=True`. Left alone, this means the "true global optimum" is a single noisy draw,
+   re-rolled every time the cache is rebuilt, rather than the fact the methodology section claims
+   it is. NATS-Bench is fixed with the one-line `is_random=False` (library-supported: average over
+   all recorded seeds). FCNet has no such flag, so `FCNetBenchmark` reads the four stored repeats
+   directly off the same `tabular_benchmarks` object's loaded HDF5 data and averages them itself,
+   instead of calling the library's randomized accessor.
+
+3. **Performance profiles no longer hide partial failures.** The previous profile builder averaged
+   `Queries_to_TargetX` over the 5 seeds *before* handing costs to the Dolan–Moré routine,
+   counting a seed that never reached the target as if it simply weren't there — an algorithm
+   that reached the target on 3 of 5 seeds and failed on 2 got the same cost as one that reached
+   it reliably on all 5. `metrics.load_cost_table` now treats each `(dataset, seed)` pair as its
+   own problem instance, so a failed seed shows up as its own unresolved point in the profile
+   instead of being averaged away.
+
+4. Removed the redundant, duplicated `load_cost_table` implementation that used to live in both
+   plotting and text-summary scripts.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Change it if you'd rather use something else; nothing in the code
+depends on the choice.

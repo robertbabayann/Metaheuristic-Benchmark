@@ -3,23 +3,26 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "meta_v2"
-version = "0.1.0"
-description = "Метаэвристический бенчмарк (HPO + NAS): FCNet и NATS-Bench, оптимизаторы mealpy, TPE-тюнинг, Performance Profiles"
+name = "meta-v2"
+version = "0.2.0"
+description = "Metaheuristic optimizer benchmark on real ML tasks (HPO via FCNet, NAS via NATS-Bench)"
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "tqdm",
+    "h5py",
     "mealpy==3.0.2",
     "optuna==4.9.0",
     "ConfigSpace==1.2.0",
     "nats_bench",
+    "matplotlib",
+    "nas-benchmarks @ git+https://github.com/automl/nas_benchmarks.git",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest",
-]
+dev = ["pytest"]
 
-[tool.setuptools.packages.find]
-include = ["benchmarks", "encoding", "optimizers", "tuning", "metrics", "experiment"]
+[tool.setuptools]
+py-modules = ["config", "benchmarks", "optimizers", "metrics", "tuning", "experiment", "run"]

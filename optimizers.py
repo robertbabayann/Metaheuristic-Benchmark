@@ -184,6 +184,86 @@ ALGORITHM_POOL = {
             "lamda": ("float", 0.5, 0.95),
         },
     },
+    "ABC": {
+        "class_name": "OriginalABC",
+        "tuning_space": {
+            "pop_size": ("int", 10, 100),
+            "n_limits": ("int", 5, 50),
+        },
+    },
+    "L-SHADE": {
+        "class_name": "L_SHADE",
+        "tuning_space": {
+            "pop_size": ("int", 10, 100),
+            "miu_f": ("float", 0.1, 0.9),
+            "miu_cr": ("float", 0.1, 0.9),
+        },
+    },
+    "JA": {
+        "class_name": "OriginalJA",
+        "tuning_space": {
+            "pop_size": ("int", 5, 100),
+        },
+    },
+    "RUN": {
+        "class_name": "OriginalRUN",
+        "tuning_space": {
+            "pop_size": ("int", 5, 100),
+        },
+    },
+    "INFO": {
+        "class_name": "OriginalINFO",
+        "tuning_space": {
+            "pop_size": ("int", 10, 100),
+        },
+    },
+    "ArchOA": {
+        "class_name": "OriginalArchOA",
+        "tuning_space": {
+            "pop_size": ("int", 5, 100),
+            "c1": ("float", 1.0, 3.0),
+            "c2": ("float", 2.0, 6.0),
+            "c3": ("float", 1.0, 3.0),
+        },
+    },
+    "MPA": {
+        "class_name": "OriginalMPA",
+        "tuning_space": {
+            "pop_size": ("int", 5, 100),
+        },
+    },
+    "GSKA": {
+        "class_name": "OriginalGSKA",
+        "pop_size_min": 20,
+        "tuning_space": {
+            "pop_size": ("int", 20, 100),
+            "pb": ("float", 0.05, 0.3),
+            "kf": ("float", 0.1, 0.9),
+            "kr": ("float", 0.1, 0.9),
+        },
+    },
+    "SMA": {
+        "class_name": "OriginalSMA",
+        "tuning_space": {
+            "pop_size": ("int", 5, 100),
+            "p_t": ("float", 0.01, 0.1),
+        },
+    },
+    "FFA": {
+        "class_name": "OriginalFFA",
+        "tuning_space": {
+            "pop_size": ("int", 5, 100),
+            "gamma": ("float", 0.0001, 0.01),
+            "beta_base": ("float", 0.5, 2.9),
+            "alpha": ("float", 0.05, 0.5),
+        },
+    },
+    "HBA": {
+        "class_name": "OriginalHBA",
+        "tuning_space": {
+            "pop_size": ("int", 5, 100),
+        },
+    },
 }
 
 _OPTIMIZER_CLASSES = None

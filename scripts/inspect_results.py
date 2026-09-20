@@ -10,11 +10,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 
 import config
+import storage
 
 
-def load_raw_table(metric_key):
+def load_raw_table(results_dir, metric_key):
     rows = []
-    pattern = os.path.join(config.RESULTS_DIR, "*", "*", "*.json")
+    pattern = os.path.join(results_dir, "*", "*", "*.json")
     for path in glob.glob(pattern):
         with open(path, "r") as f:
             data = json.load(f)
@@ -42,11 +43,20 @@ def load_raw_table(metric_key):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--run", default=None, help="run id (bench_...); defaults to the latest run")
     parser.add_argument("--metric", default="target_2")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
 
-    rows = load_raw_table(args.metric)
+    run_id = args.run or (storage.list_runs()[0] if storage.list_runs() else None)
+    if run_id is None:
+        print("no runs found")
+        return
+
+    rows = load_raw_table(storage.run_dir(run_id), args.metric)
+    if not rows:
+        print("no results found yet")
+        return
     rows.sort(key=lambda r: (r["track"], r["dataset"], r["algorithm"], r["mode"]))
 
     for r in rows:

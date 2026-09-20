@@ -69,22 +69,26 @@ def queries_to_targets(best_history, targets):
 
 def performance_profile(cost_table, taus):
     methods = list(cost_table.keys())
-    problems = list(next(iter(cost_table.values())).keys())
+    problems = sorted({problem for problems in cost_table.values() for problem in problems})
 
     ratios = {method: [] for method in methods}
     for problem in problems:
-        values = {method: cost_table[method][problem] for method in methods}
+        values = {method: cost_table[method][problem] for method in methods if problem in cost_table[method]}
+        if not values:
+            continue
         finite_values = [v for v in values.values() if np.isfinite(v)]
         if not finite_values:
             continue
         best = min(finite_values)
-        for method in methods:
-            v = values[method]
+        for method, v in values.items():
             ratios[method].append(v / best if np.isfinite(v) else np.inf)
 
     profiles = {}
     for method in methods:
         r = np.array(ratios[method])
+        if r.size == 0:
+            profiles[method] = np.zeros_like(taus, dtype=float)
+            continue
         profiles[method] = np.array([np.mean(r <= tau) for tau in taus])
     return profiles
 

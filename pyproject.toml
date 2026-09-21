@@ -18,6 +18,7 @@ dependencies = [
     "ConfigSpace==1.2.0",
     "nats_bench",
     "matplotlib",
+    "scipy",
     "nas-benchmarks @ git+https://github.com/automl/nas_benchmarks.git",
 ]
 

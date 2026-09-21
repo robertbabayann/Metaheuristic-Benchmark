@@ -42,9 +42,10 @@ def tune_internal_params(class_name, algorithm_spec, benchmark, proxy_budget, n_
             "minmax": "min",
             "log_to": None,
         }
+        trial_seed = seed + trial.number
         try:
             optimizer = build_optimizer(class_name, proxy_budget, pop_size, internal_params)
-            optimizer.solve(problem, seed=seed)
+            optimizer.solve(problem, seed=trial_seed)
         except BudgetExceeded:
             pass
         except Exception:

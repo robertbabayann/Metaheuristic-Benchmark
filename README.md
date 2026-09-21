@@ -182,6 +182,30 @@ consolidation described above.
 4. Removed the redundant, duplicated `load_cost_table` implementation that used to live in both
    plotting and text-summary scripts.
 
+5. **Tuning no longer overfits to one random draw (`tuning.py`).** Every Optuna trial used to call
+   `optimizer.solve(problem, seed=tuning_seed)` with the *same* fixed seed across all trials —
+   meaning TPE wasn't picking the internal parameters that work best for the algorithm in general,
+   it was picking whatever exploits that one specific random population trajectory best. This gets
+   worse, not better, as `TUNING_N_TRIALS` grows, and is the most likely explanation for several
+   algorithms scoring *lower* AUC in `tuned` mode than in `default` mode after `TUNING_N_TRIALS` was
+   raised to 100. Fixed by deriving a distinct, deterministic seed per trial
+   (`tuning_seed + trial.number`): each candidate configuration is now evaluated on its own random
+   draw, while the overall tuning stage stays fully reproducible run-to-run.
+
+6. Added `scipy` to `pyproject.toml` — required by the Friedman/Wilcoxon significance report in
+   `ranking.py`, which wasn't declared as a dependency.
+
+## A note on `cache/targets/`
+
+Target calibration (`optimum`, `random_median`, `target_*`) is cached per dataset under
+`cache/targets/<track>/<dataset>.json` and is **not** scoped to a `results/bench_<timestamp>/` run.
+Changing any of `SEARCH_BUDGET`, `RANDOM_SEARCH_REPEATS`, or `TARGET_LEVELS` in `config.py` silently
+invalidates every existing file there — they are not recomputed automatically. Run
+`rm -rf cache/targets` after any such change and before starting a new run, or different datasets in
+the same `results/bench_*` folder can end up calibrated against different, inconsistent budgets
+without any error or warning. `cache/hpo_optimum/` and `cache/nas_optimum/` are unaffected by these
+settings and do not need to be cleared.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Change it if you'd rather use something else; nothing in the code
